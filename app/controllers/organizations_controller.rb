@@ -6,37 +6,38 @@ class OrganizationsController < ApplicationController
 
     if org.save
       org.organization_memberships.create!(user: @current_user, role: :org_admin)
-      render json: org_response(org), status: :created
+      render_success(org_data(org), status: :created)
     else
-      render json: { errors: org.errors.full_messages }, status: :unprocessable_entity
+      render_error("Failed to create organization", :unprocessable_entity, details: org.errors.full_messages)
     end
   end
 
   def show
     unless member_of?(@organization)
-      return render json: { error: "You are not a member of this organization" }, status: :forbidden
+      return render_error("You are not a member of this organization", :forbidden)
     end
 
-    render json: org_response(@organization)
+    render_success(org_data(@organization))
   end
 
   def add_instructor
     unless admin_of?(@organization)
-      return render json: { error: "Only org admins can add instructors" }, status: :forbidden
+      return render_error("Only org admins can add instructors", :forbidden)
     end
 
     user = User.find_by(id: params[:user_id])
-    return render json: { error: "User not found" }, status: :not_found unless user
+    return render_error("No user found with id #{params[:user_id]}", :not_found) unless user
 
-    membership = @organization.organization_memberships.new(user: user, role: :instructor)
+    if already_member?(@organization, user)
+      return render_error("#{user.name} is already a member of this organization", :unprocessable_entity)
+    end
 
-    if membership.save
-      render json: {
-        message: "#{user.name} added as instructor",
-        membership: membership_response(membership)
-      }, status: :created
+    membership = @organization.organization_memberships.create(user: user, role: :instructor)
+
+    if membership.persisted?
+      render_success({ message: "#{user.name} added as instructor", membership: membership_data(membership) }, status: :created)
     else
-      render json: { errors: membership.errors.full_messages }, status: :unprocessable_entity
+      render_error("Failed to add instructor", :unprocessable_entity, details: membership.errors.full_messages)
     end
   end
 
@@ -44,7 +45,7 @@ class OrganizationsController < ApplicationController
 
   def set_organization
     @organization = Organization.find_by(id: params[:id])
-    render json: { error: "Organization not found" }, status: :not_found unless @organization
+    render_error("No organization found with id #{params[:id]}", :not_found) unless @organization
   end
 
   def member_of?(org)
@@ -55,16 +56,20 @@ class OrganizationsController < ApplicationController
     org.organization_memberships.org_admin.exists?(user: @current_user)
   end
 
-  def org_response(org)
+  def already_member?(org, user)
+    org.organization_memberships.exists?(user: user)
+  end
+
+  def org_data(org)
     {
       id: org.id,
       name: org.name,
       created_by: org.creator.name,
-      members: org.organization_memberships.includes(:user).map { |m| membership_response(m) }
+      members: org.organization_memberships.includes(:user).map { |m| membership_data(m) }
     }
   end
 
-  def membership_response(membership)
+  def membership_data(membership)
     {
       user_id: membership.user_id,
       name: membership.user.name,
