@@ -1,6 +1,9 @@
-# Organization & RBAC PoC for CircuitVerse
+# Organization & RBAC PoC for CircuitVerse #Project 6
+Submitted as part of GSoC 2026 proposal for CircuitVerse.
 
-A Proof of Concept built with Ruby on Rails demonstrating a basic Organization and Role-Based Access Control (RBAC) system, submitted as part of GSoC 2026 preparation for [CircuitVerse](https://circuitverse.org).
+This project is a Proof of Concept built with Ruby on Rails that demonstrates a minimal Organization and Role-Based Access Control (RBAC) system. It is based on [Project 6: Enterprise & Institutional Organization Features](https://github.com/CircuitVerse/CircuitVerse/wiki/GSoC'26-Project-List#project-6-enterprise--institutional-organization-features) from the CircuitVerse GSoC 2026 project list.
+
+The goal of this PoC is to validate the core data model and permission structure in a simple, focused environment before scaling it into a full production feature.
 
 ---
 
@@ -19,6 +22,12 @@ The system is intentionally minimal. There are only two roles and three API endp
 This keeps the code readable and easy to audit. A more complex system can always be layered on top once the core logic is validated.
 
 Authentication is out of scope for this PoC. Instead, each request carries an `X-User-Id` header that identifies the acting user.
+
+---
+
+## Why this PoC matters
+
+This PoC focuses on validating a clean and scalable approach to organization-level RBAC before integrating it into a larger production system. It ensures that role boundaries, data relationships, and permission checks are well-defined early on.
 
 ---
 
@@ -151,7 +160,7 @@ Adds a user as an instructor. Only `org_admin` can call this.
 **Prerequisites:** Ruby 3.2+, Bundler
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/org_rbac_poc.git
+git https://github.com/koustubh-v/circuitverse-org-rbac-poc.git
 cd org_rbac_poc
 
 bundle install
