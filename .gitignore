@@ -35,3 +35,4 @@ config/credentials.yml.enc
 
 # Test coverage
 /coverage
+
