@@ -1,45 +1,71 @@
-# org_rbac_poc
+# Organization & RBAC PoC for CircuitVerse
 
-A minimal Proof of Concept for an **Organization + Role-Based Access Control (RBAC)** system built with Ruby on Rails (API-only mode).
+A Proof of Concept built with Ruby on Rails demonstrating a basic Organization and Role-Based Access Control (RBAC) system, submitted as part of GSoC 2026 preparation for [CircuitVerse](https://circuitverse.org).
 
 ---
 
 ## Overview
 
-This PoC demonstrates how to structure a multi-tenant organization system where users can create organizations, invite others as instructors, and where access is controlled by role — all without relying on external authorization gems.
+CircuitVerse needs a way to group users into organizations and control what each user can do within that organization. This PoC models that requirement at its simplest: a user can create an organization, invite others as instructors, and access is controlled by role.
+
+The goal is to validate the data model and authorization approach before building it into the main application.
 
 ---
 
-## Database Design
+## Approach
 
-```
-users
-  id, name, email
+The system is intentionally minimal. There are only two roles and three API endpoints. Authorization is enforced inline in the controller using plain ActiveRecord queries — no external gems like Pundit or CanCanCan.
 
-organizations
-  id, name, creator_id (→ users.id)
+This keeps the code readable and easy to audit. A more complex system can always be layered on top once the core logic is validated.
 
-organization_memberships
-  id, user_id (→ users), organization_id (→ organizations), role (0=org_admin, 1=instructor)
-```
+Authentication is out of scope for this PoC. Instead, each request carries an `X-User-Id` header that identifies the acting user.
+
+---
+
+## Data Model
+
+### Users
+
+| Column | Type   |
+|--------|--------|
+| id     | integer |
+| name   | string |
+| email  | string (unique) |
+
+### Organizations
+
+| Column     | Type    |
+|------------|---------|
+| id         | integer |
+| name       | string  |
+| creator_id | integer (FK → users) |
+
+### OrganizationMemberships
+
+| Column          | Type    |
+|-----------------|---------|
+| id              | integer |
+| user_id         | integer (FK → users) |
+| organization_id | integer (FK → organizations) |
+| role            | integer (enum: 0=org_admin, 1=instructor) |
 
 **Relationships:**
-- A `User` has many `OrganizationMemberships` and organizations through them.
-- An `Organization` has many `OrganizationMemberships` and members through them.
-- Each `OrganizationMembership` links a user to an org with a specific role.
+
+- A user can belong to many organizations through memberships.
+- An organization has many members through memberships.
+- Each membership is unique per user per organization (enforced at both the DB and model level).
 
 ---
 
 ## RBAC Logic
 
-Roles are stored as an enum integer on `OrganizationMembership`:
+Roles are stored as an integer enum on `OrganizationMembership`:
 
-| Role        | Integer |
-|-------------|---------|
-| `org_admin` | 0       |
-| `instructor`| 1       |
+```ruby
+enum :role, { org_admin: 0, instructor: 1 }
+```
 
-Authorization is handled inline in the controller using two simple private helpers:
+Access control is handled by two private helpers in the controller:
 
 ```ruby
 def member_of?(org)
@@ -51,49 +77,103 @@ def admin_of?(org)
 end
 ```
 
-No Pundit, no CanCanCan — just plain ActiveRecord queries.
-
----
-
-## Current User Simulation
-
-Since this is a PoC, authentication is skipped. Pass the acting user's ID via an HTTP header:
-
-```
-X-User-Id: 1
-```
+| Action          | org_admin | instructor |
+|-----------------|-----------|------------|
+| Create org      | yes       | yes (becomes admin) |
+| View org        | yes       | yes        |
+| Add instructor  | yes       | no (403)   |
 
 ---
 
 ## API Endpoints
 
-| Method | Path                              | Who can call       | Description                         |
-|--------|-----------------------------------|--------------------|-------------------------------------|
-| POST   | `/organizations`                  | Any valid user     | Creates an org; creator → org_admin |
-| GET    | `/organizations/:id`              | org_admin, instructor | View org details + members       |
-| POST   | `/organizations/:id/add_instructor` | org_admin only   | Add a user as instructor            |
+All responses follow this structure:
+
+```json
+// Success
+{ "success": true, "data": { ... } }
+
+// Error
+{ "success": false, "error": "...", "details": [...] }
+```
+
+The `details` field is only present when there are validation errors.
 
 ---
 
-## Running the Project
+### POST /organizations
+
+Creates a new organization. The requesting user automatically becomes `org_admin`.
+
+**Request:**
+```json
+{ "name": "CircuitVerse" }
+```
+
+---
+
+### GET /organizations/:id
+
+Returns organization details and its member list. Accessible to both `org_admin` and `instructor`.
+
+---
+
+### POST /organizations/:id/add_instructor
+
+Adds a user as an instructor. Only `org_admin` can call this.
+
+**Request:**
+```json
+{ "user_id": 2 }
+```
+
+---
+
+## Example Flow
+
+1. Koustubh sends `POST /organizations` with `X-User-Id: 1`.
+   - Organization is created.
+   - Koustubh is automatically assigned `org_admin`.
+
+2. Koustubh sends `POST /organizations/1/add_instructor` with `{ "user_id": 2 }`.
+   - Vedant is added as `instructor`.
+
+3. Vedant sends `GET /organizations/1` with `X-User-Id: 2`.
+   - Returns organization details. Access granted.
+
+4. Vedant tries `POST /organizations/1/add_instructor` with `X-User-Id: 2`.
+   - Returns `403 Forbidden`. Instructors cannot add members.
+
+---
+
+## How to Run
 
 **Prerequisites:** Ruby 3.2+, Bundler
 
 ```bash
+git clone https://github.com/YOUR_USERNAME/org_rbac_poc.git
 cd org_rbac_poc
+
 bundle install
+
 rails db:create db:migrate db:seed
+
 rails server
 ```
 
-Seeded user IDs will be printed in the terminal (Alice=1, Bob=2, Carol=3 by default).
+After seeding, the database will have three users:
+
+| id | name     | email                |
+|----|----------|----------------------|
+| 1  | Koustubh | koustubh@admin.com   |
+| 2  | Vedant   | vedant@admin.com     |
+| 3  | Pratham  | pratham@admin.com    |
 
 ---
 
-## Example API Requests
+## Testing the API
 
-### 1. Create an Organization (as Alice)
-
+**Create an organization (as Koustubh):**
 ```bash
 curl -X POST http://localhost:3000/organizations \
   -H "Content-Type: application/json" \
@@ -101,29 +181,13 @@ curl -X POST http://localhost:3000/organizations \
   -d '{"name": "CircuitVerse"}'
 ```
 
-**Response (201):**
-```json
-{
-  "id": 1,
-  "name": "CircuitVerse",
-  "created_by": "Alice",
-  "members": [{ "user_id": 1, "name": "Alice", "role": "org_admin" }]
-}
-```
-
----
-
-### 2. View Organization (as Alice or an instructor)
-
+**View the organization:**
 ```bash
 curl http://localhost:3000/organizations/1 \
   -H "X-User-Id: 1"
 ```
 
----
-
-### 3. Add Bob as Instructor (org_admin only)
-
+**Add Vedant as instructor:**
 ```bash
 curl -X POST http://localhost:3000/organizations/1/add_instructor \
   -H "Content-Type: application/json" \
@@ -131,18 +195,7 @@ curl -X POST http://localhost:3000/organizations/1/add_instructor \
   -d '{"user_id": 2}'
 ```
 
-**Response (201):**
-```json
-{
-  "message": "Bob added as instructor",
-  "membership": { "user_id": 2, "name": "Bob", "role": "instructor" }
-}
-```
-
----
-
-### 4. Instructor tries to add a member (should fail)
-
+**Instructor tries to add a member (expect 403):**
 ```bash
 curl -X POST http://localhost:3000/organizations/1/add_instructor \
   -H "Content-Type: application/json" \
@@ -150,24 +203,37 @@ curl -X POST http://localhost:3000/organizations/1/add_instructor \
   -d '{"user_id": 3}'
 ```
 
-**Response (403):**
-```json
-{ "error": "Only org admins can add instructors" }
-```
-
----
-
-### 5. Duplicate membership attempt
-
+**Duplicate membership attempt (expect 422):**
 ```bash
-# Try adding Bob again as instructor
 curl -X POST http://localhost:3000/organizations/1/add_instructor \
   -H "Content-Type: application/json" \
   -H "X-User-Id: 1" \
   -d '{"user_id": 2}'
 ```
 
-**Response (422):**
-```json
-{ "errors": ["User is already a member of this organization"] }
-```
+---
+
+## Design Decisions
+
+**No authentication system.** Adding session management or token auth would obscure the RBAC logic, which is the actual subject of this PoC. The `X-User-Id` header is a stand-in that keeps the focus where it belongs.
+
+**No authorization gems.** Pundit and CanCanCan are good tools, but they add abstraction. For three endpoints and two roles, a pair of ActiveRecord checks is simpler and easier to review.
+
+**Inline authorization over callbacks.** Authorization logic lives directly in each action rather than in `before_action` hooks. This makes the permission model explicit and avoids hidden control flow.
+
+---
+
+## Possible Improvements
+
+- **Authentication** — Integrate with CircuitVerse's existing auth (Devise/OmniAuth) rather than the header approach.
+- **More roles** — Add roles like `viewer` or `co_admin` as the product requires.
+- **Multi-organization membership** — A user holding different roles in different organizations simultaneously.
+- **Audit log** — Track who added whom and when.
+- **UI layer** — A frontend to manage organization members and roles.
+- **SSO** — Integrate with institutional identity providers for organization-level sign-in.
+
+---
+
+## Demo
+
+_Demo video link coming soon._
