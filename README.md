@@ -5,6 +5,10 @@ This project is a Proof of Concept built with Ruby on Rails that demonstrates a 
 
 The goal of this PoC is to validate the core data model and permission structure in a simple, focused environment before scaling it into a full production feature.
 
+<p>
+  <a href="https://youtu.be/7Yd9Bs8RZVU">Demo Video</a>
+</p>
+
 ---
 
 ## Overview
@@ -240,8 +244,3 @@ curl -X POST http://localhost:3000/organizations/1/add_instructor \
 - **Audit log** — Track who added whom and when.
 - **UI layer** — A frontend to manage organization members and roles.
 - **SSO** — Integrate with institutional identity providers for organization-level sign-in.
-
----
-
-## Demo
-[YouTube](https://youtu.be/7Yd9Bs8RZVU)
