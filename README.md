@@ -244,5 +244,4 @@ curl -X POST http://localhost:3000/organizations/1/add_instructor \
 ---
 
 ## Demo
-
-_Demo video link coming soon._
+[YouTube](https://youtu.be/7Yd9Bs8RZVU)
